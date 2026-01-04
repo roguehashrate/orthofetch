@@ -16,6 +16,7 @@ This will:
 
 - Copy the `orthofetch` script to `~/.local/bin`
 - Copy the calendar data to `~/.local/share/orthofetch`
+- Copy the bible data to `~/.local/share/orthofetch/bible`
 
 Make sure `~/.local/bin` is in your `PATH` to run `orthofetch` from anywhere.
 
@@ -30,6 +31,18 @@ orthofetch
 ```
 
 It will display today’s Orthodox calendar entry in a neat, aligned format with the Orthodox cross.
+
+```bash
+orthofetch --reading [NUM]
+```
+
+This will give you the reading well to read. So if you see [1] John 3.15-18 for example you will get those verses to read.
+
+```bash
+orthofetch --no-color
+```
+
+This will take the color out of it making it plain text. This will also work with `--reading [num]` if you want to use it that way.
 
 ---
 
