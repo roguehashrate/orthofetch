@@ -5,6 +5,23 @@ import os
 import argparse
 import re
 
+# Color scheme for Orthodox Christian theme
+class Colors:
+    # ANSI color codes
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    
+    # Colors
+    GOLD = '\033[38;5;214m'      # Gold for cross and special elements
+    DEEP_RED = '\033[38;5;88m'    # Deep red for feast days
+    BLUE = '\033[38;5;25m'        # Deep blue for saints
+    GREEN = '\033[38;5;28m'       # Green for fasting info
+    PURPLE = '\033[38;5;91m'      # Purple for readings
+    CYAN = '\033[38;5;39m'        # Cyan for labels
+    WHITE = '\033[38;5;255m'      # White for text
+    GRAY = '\033[38;5;245m'       # Gray for subtle elements
+
 # Locate calendar file
 if os.path.exists("data/orthodox_calendar_2026.txt"):
     CALENDAR_FILE = "data/orthodox_calendar_2026.txt"
@@ -36,10 +53,10 @@ BOOK_CODES = {
     "Psalm 151": "P151", "Prayer of Manasseh": "MAN", "1 Esdras": "1ES", "2 Esdras": "2ES"
 }
 
-# Compact Orthodox Cross
+# Compact Orthodox Cross (will be colored with gold)
 ORTHODOX_CROSS = [
     "      ██",
-    "    ██████",
+    "    ██████", 
     "      ██",
     "  ██████████",
     "      ██",
@@ -120,9 +137,28 @@ def get_bible_text(book, chapter, start_verse, end_verse):
             header = f"{book} {chapter}:{start_verse}"
             if end_verse != start_verse:
                 header += f"-{end_verse}"
-            return f"\n{header}\n" + "\n".join(result_lines)
+            # Colorize the header
+            colored_header = colorize_text(header, Colors.GOLD)
+            colored_verses = []
+            for verse in result_lines:
+                # Split verse number from text
+                if verse and verse[0].isdigit():
+                    space_pos = verse.find(' ')
+                    if space_pos > 0:
+                        verse_num = verse[:space_pos]
+                        verse_text = verse[space_pos+1:]
+                        colored_verses.append(
+                            colorize_text(verse_num, Colors.CYAN) + " " + 
+                            colorize_text(verse_text, Colors.WHITE)
+                        )
+                    else:
+                        colored_verses.append(colorize_text(verse, Colors.WHITE))
+                else:
+                    colored_verses.append(colorize_text(verse, Colors.WHITE))
+            
+            return f"\n{colored_header}\n" + "\n".join(colored_verses)
         else:
-            return f"Verses {start_verse}-{end_verse} not found in {book} {chapter}."
+            return colorize_text(f"Verses {start_verse}-{end_verse} not found in {book} {chapter}.", Colors.GRAY)
             
     except Exception as e:
         return f"Error reading {book} {chapter}:{start_verse}-{end_verse}: {e}"
@@ -141,12 +177,12 @@ def display_reading(reading_number):
             break
 
     if not entry:
-        print("No entry for today in the calendar.")
+        print(colorize_text("No entry for today in the calendar.", Colors.GRAY))
         return
 
     readings_text = entry.get("[Readings]:", "")
     if not readings_text:
-        print("No readings for today.")
+        print(colorize_text("No readings for today.", Colors.GRAY))
         return
 
     # Split readings by " • " first
@@ -180,10 +216,10 @@ def display_reading(reading_number):
     try:
         reading_idx = int(reading_number) - 1
         if reading_idx < 0 or reading_idx >= len(clean_readings):
-            print(f"Reading number {reading_number} not found. There are {len(clean_readings)} readings today.")
-            print("Available readings:")
+            print(colorize_text(f"Reading number {reading_number} not found. There are {len(clean_readings)} readings today.", Colors.DEEP_RED))
+            print(colorize_text("Available readings:", Colors.CYAN))
             for i, reading in enumerate(clean_readings, 1):
-                print(f"  {i}. {reading}")
+                print(f"  {colorize_text(str(i), Colors.GOLD)}. {colorize_text(reading, Colors.PURPLE)}")
             return
 
         reading_ref = clean_readings[reading_idx]
@@ -194,7 +230,7 @@ def display_reading(reading_number):
             text = get_bible_text(book, chapter, start_verse, end_verse)
             print(text)
         else:
-            print(f"Could not parse reading reference: {reading_ref}")
+            print(colorize_text(f"Could not parse reading reference: {reading_ref}", Colors.DEEP_RED))
             
     except ValueError:
         print("Please provide a valid reading number (e.g., --reading 1)")
@@ -269,6 +305,44 @@ def wrap_readings(text, width):
     return lines if lines else [""]
 
 
+def colorize_text(text, color):
+    """Apply color to text"""
+    return f"{color}{text}{Colors.RESET}"
+
+
+def get_visible_length(text):
+    """Get the visible length of text (excluding ANSI color codes)"""
+    import re
+    # Remove ANSI escape sequences
+    clean_text = re.sub(r'\033\[[0-9;]*m', '', text)
+    return len(clean_text)
+
+
+def colorize_cross(line):
+    """Apply gold color to cross elements"""
+    # Replace block characters with colored versions
+    return colorize_text(line.replace('█', '█'), Colors.GOLD)
+
+
+def colorize_field_label(label):
+    """Apply cyan color to field labels"""
+    return colorize_text(label, Colors.CYAN)
+
+
+def colorize_field_content(content, field):
+    """Apply appropriate colors to field content"""
+    if field == "[Feasts]:":
+        return colorize_text(content, Colors.DEEP_RED)
+    elif field == "[Saints]:":
+        return colorize_text(content, Colors.BLUE)
+    elif field == "[Fasting]:":
+        return colorize_text(content, Colors.GREEN)
+    elif field == "[Readings]:":
+        return colorize_text(content, Colors.PURPLE)
+    else:
+        return colorize_text(content, Colors.WHITE)
+
+
 def display_today():
     today = datetime.date.today()
     calendar = parse_calendar(CALENDAR_FILE)
@@ -300,25 +374,35 @@ def display_today():
     for field in FIELDS:
         lines = wrapped_fields[field]
         for i, line in enumerate(lines):
-            cross_part = (
+            # Get raw cross part
+            raw_cross_part = (
                 ORTHODOX_CROSS[cross_index]
                 if cross_index < cross_height
                 else " " * CROSS_WIDTH
             )
-
-            label = field.ljust(MAX_FIELD_WIDTH) if i == 0 else " " * MAX_FIELD_WIDTH
-
-            print(
-                f"{cross_part.ljust(CROSS_WIDTH)}"
-                f"{' ' * TEXT_GAP}"
-                f"{label} {line}"
-            )
+            
+            # Build the raw line first (without colors)
+            if i == 0:
+                raw_label = field.ljust(MAX_FIELD_WIDTH)
+            else:
+                raw_label = " " * MAX_FIELD_WIDTH
+            
+            raw_content = line if line else ""
+            raw_line = f"{raw_cross_part.ljust(CROSS_WIDTH)}{' ' * TEXT_GAP}{raw_label} {raw_content}"
+            
+            # Now colorize the parts
+            colored_cross = colorize_cross(raw_cross_part).ljust(CROSS_WIDTH + len(colorize_cross(raw_cross_part)) - len(raw_cross_part))
+            colored_label = colorize_field_label(raw_label) if i == 0 else raw_label
+            colored_content = colorize_field_content(raw_content, field) if raw_content else ""
+            
+            # Combine with correct spacing
+            print(f"{colored_cross}{' ' * TEXT_GAP}{colored_label} {colored_content}")
 
             cross_index += 1
 
     # Print remaining cross lines if any
     for i in range(cross_index, cross_height):
-        print(ORTHODOX_CROSS[i])
+        print(colorize_cross(ORTHODOX_CROSS[i]))
 
 
 def main():
@@ -329,7 +413,7 @@ def main():
     
     if args.reading is not None:
         if args.reading <= 0:
-            print("Reading number must be positive.")
+            print(colorize_text("Reading number must be positive.", Colors.DEEP_RED))
             return
         display_reading(args.reading)
     else:
