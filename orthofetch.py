@@ -5,6 +5,9 @@ import os
 import argparse
 import re
 
+# Global variable for color control
+no_color = False
+
 # Color scheme for Orthodox Christian theme
 class Colors:
     # ANSI color codes
@@ -307,11 +310,15 @@ def wrap_readings(text, width):
 
 def colorize_text(text, color):
     """Apply color to text"""
+    if no_color:
+        return text
     return f"{color}{text}{Colors.RESET}"
 
 
 def get_visible_length(text):
     """Get the visible length of text (excluding ANSI color codes)"""
+    if no_color:
+        return len(text)
     import re
     # Remove ANSI escape sequences
     clean_text = re.sub(r'\033\[[0-9;]*m', '', text)
@@ -406,10 +413,14 @@ def display_today():
 
 
 def main():
+    global no_color
     parser = argparse.ArgumentParser(description="Orthodox Christian calendar fetch tool")
     parser.add_argument("--reading", type=int, help="Display full text of specific reading number for today")
+    parser.add_argument("--no-color", action="store_true", help="Disable colored output")
     
     args = parser.parse_args()
+    
+    no_color = args.no_color
     
     if args.reading is not None:
         if args.reading <= 0:
