@@ -223,17 +223,45 @@ def parse_calendar(file_path):
 
 
 def wrap_readings(text, width):
+    # Parse the readings the same way as display_reading to get clean list
     readings = [r.strip() for r in text.split(" • ") if r.strip()]
-    lines = []
-
+    clean_readings = []
+    
     for reading in readings:
+        if reading.startswith("Composite"):
+            # Remove "Composite X - " prefix
+            clean_reading = re.sub(r'^Composite \d+ -\s*', '', reading)
+            # Handle cases with semicolons and multiple readings
+            if ';' in clean_reading:
+                # Split by semicolon first
+                semicolon_parts = [p.strip() for p in clean_reading.split(';')]
+                for part in semicolon_parts:
+                    if part:
+                        # Then split by • within each semicolon part
+                        sub_parts = [r.strip() for r in part.split(" • ") if r.strip()]
+                        clean_readings.extend(sub_parts)
+            else:
+                # Split by • as before
+                sub_parts = [r.strip() for r in clean_reading.split(" • ") if r.strip()]
+                clean_readings.extend(sub_parts)
+        else:
+            clean_readings.append(reading)
+    
+    # Filter out any empty entries
+    clean_readings = [r for r in clean_readings if r and not r.isdigit()]
+    
+    lines = []
+    
+    for i, reading in enumerate(clean_readings, 1):
+        # Add number prefix: [1] reading
+        numbered_reading = f"[{i}] {reading}"
         wrapped = textwrap.wrap(
-            reading,
+            numbered_reading,
             width=width - 2,
-            subsequent_indent="  "
+            subsequent_indent="  "  # Indent continuation lines
         )
-        for i, line in enumerate(wrapped):
-            if i == 0:
+        for j, line in enumerate(wrapped):
+            if j == 0:
                 lines.append("  " + line)
             else:
                 lines.append(line)
