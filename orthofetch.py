@@ -4,6 +4,7 @@ import textwrap
 import os
 import argparse
 import re
+import sys
 
 # Global variable for color control
 no_color = False
@@ -94,6 +95,27 @@ def parse_reading_reference(reference):
         
         return book, chapter, start_verse, end_verse
     return None
+
+
+def get_last_verse_in_chapter(book_code, chapter):
+    """Get the last verse number in a chapter"""
+    chapter_file = os.path.join(BIBLE_DIR, book_code, f"ch{chapter}.txt")
+    if not os.path.exists(chapter_file):
+        return 0
+    
+    try:
+        with open(chapter_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        last_verse = 0
+        for line in lines:
+            line = line.strip()
+            if line.isdigit():
+                last_verse = int(line)
+        
+        return last_verse
+    except Exception:
+        return 0
 
 
 def get_bible_text(book, chapter, start_verse, end_verse):
@@ -412,21 +434,291 @@ def display_today():
         print(colorize_cross(ORTHODOX_CROSS[i]))
 
 
+def list_bible_books():
+    """Display all available Bible books"""
+    print(colorize_text("Available Bible Books:", Colors.GOLD))
+    print()
+    
+    # Group books by testament and type for better organization
+    old_testament = []
+    new_testament = []
+    deuterocanonical = []
+    
+    # Book codes and their categories
+    ot_books = ["GEN", "EXO", "LEV", "NUM", "DEU", "JOS", "JDG", "RUT", "1SA", "2SA", 
+                "1KI", "2KI", "1CH", "2CH", "EZR", "NEH", "EST", "JOB", "PSA", "PRO",
+                "ECC", "SNG", "ISA", "JER", "LAM", "EZK", "DAN", "HOS", "JOL", "AMO",
+                "OBA", "JON", "MIC", "NAM", "HAB", "ZEP", "HAG", "ZEC", "MAL"]
+    
+    nt_books = ["MAT", "MRK", "LUK", "JHN", "ACT", "ROM", "1CO", "2CO", "GAL", "EPH",
+                "PHP", "COL", "1TH", "2TH", "1TI", "2TI", "TIT", "PHM", "HEB", "JAS",
+                "1PE", "2PE", "1JN", "2JN", "3JN", "JUD", "REV"]
+    
+    deut_books = ["TOB", "JDT", "ESG", "WIS", "SIR", "BAR", "1MA", "2MA", "1ES", "2ES",
+                  "MAN", "P151"]
+    
+    # Create reverse lookup from BOOK_CODES
+    code_to_name = {}
+    for name, code in BOOK_CODES.items():
+        code_to_name[code] = name
+    
+    # Check which books are actually available
+    available_books = []
+    if os.path.exists(BIBLE_DIR):
+        available_books = [d for d in os.listdir(BIBLE_DIR) 
+                          if os.path.isdir(os.path.join(BIBLE_DIR, d))]
+    
+    # Organize books by category
+    for book in sorted(available_books):
+        if book in code_to_name:
+            book_name = code_to_name[book]
+            if book in ot_books:
+                old_testament.append(book_name)
+            elif book in nt_books:
+                new_testament.append(book_name)
+            elif book in deut_books:
+                deuterocanonical.append(book_name)
+    
+    # Display Old Testament
+    if old_testament:
+        print(colorize_text("Old Testament:", Colors.DEEP_RED))
+        for i, book in enumerate(old_testament, 1):
+            print(f"  {colorize_text(str(i).ljust(2), Colors.CYAN)} {book}")
+        print()
+    
+    # Display New Testament
+    if new_testament:
+        print(colorize_text("New Testament:", Colors.BLUE))
+        for i, book in enumerate(new_testament, len(old_testament) + 1):
+            print(f"  {colorize_text(str(i).ljust(2), Colors.CYAN)} {book}")
+        print()
+    
+    # Display Deuterocanonical
+    if deuterocanonical:
+        print(colorize_text("Deuterocanonical:", Colors.PURPLE))
+        for i, book in enumerate(deuterocanonical, len(old_testament) + len(new_testament) + 1):
+            print(f"  {colorize_text(str(i).ljust(2), Colors.CYAN)} {book}")
+
+
+def list_chapters(book_name):
+    """Display available chapters for a specific book"""
+    book_code = BOOK_CODES.get(book_name)
+    if not book_code:
+        print(colorize_text(f"Book '{book_name}' not found.", Colors.DEEP_RED))
+        print(colorize_text("Use --bible to see available books.", Colors.GRAY))
+        return
+    
+    book_dir = os.path.join(BIBLE_DIR, book_code)
+    if not os.path.exists(book_dir):
+        print(colorize_text(f"Book directory for {book_name} not found.", Colors.DEEP_RED))
+        return
+    
+    chapters = []
+    for file in sorted(os.listdir(book_dir)):
+        if file.startswith("ch") and file.endswith(".txt"):
+            chapter_num = file[2:-4]  # Extract number between "ch" and ".txt"
+            chapters.append(int(chapter_num))
+    
+    if chapters:
+        print(colorize_text(f"Available chapters in {book_name}:", Colors.GOLD))
+        print()
+        
+        # Display chapters in rows of 10
+        for i in range(0, len(chapters), 10):
+            row_chapters = chapters[i:i+10]
+            chapter_strs = [colorize_text(str(ch), Colors.CYAN) for ch in row_chapters]
+            print("  " + "  ".join(chapter_strs))
+        
+        print(f"\nTotal chapters: {len(chapters)}")
+        print(colorize_text(f"Example usage: --bible {book_name} {chapters[0]} or --bible {book_name} {chapters[0]}:1", Colors.GRAY))
+    else:
+        print(colorize_text(f"No chapters found for {book_name}.", Colors.DEEP_RED))
+
+
+def parse_bible_reference(args):
+    """Parse Bible reference from command line arguments"""
+    if not args:
+        return None, None, None, None
+    
+    if len(args) == 1:
+        # Just book name
+        return args[0], None, None, None
+    elif len(args) == 2:
+        # Book and chapter OR Book and chapter:verse
+        if ':' in args[1]:
+            # Format: John 3:16
+            try:
+                chapter_part, verse_part = args[1].split(':')
+                chapter = int(chapter_part)
+                if '-' in verse_part:
+                    # Range: 3:16-17
+                    start_verse, end_verse = verse_part.split('-')
+                    verse = int(start_verse)
+                    end_verse = int(end_verse)
+                    return args[0], chapter, verse, end_verse
+                else:
+                    # Single verse: 3:16
+                    verse = int(verse_part)
+                    return args[0], chapter, verse, verse
+            except ValueError:
+                return None, None, None, None
+        else:
+            # Book and chapter only
+            try:
+                chapter = int(args[1])
+                return args[0], chapter, None, None
+            except ValueError:
+                return None, None, None, None
+    
+    return None, None, None, None
+
+
+def handle_bible_command(args):
+    """Handle Bible reading commands"""
+    if not args:
+        list_bible_books()
+        return
+    
+    book, chapter, start_verse, end_verse = parse_bible_reference(args)
+    
+    if book and chapter is None:
+        # List chapters for this book
+        list_chapters(book)
+    elif book and chapter is not None:
+        # Display specific chapter or verses
+        if start_verse is None:
+            # Show full chapter - get the last verse
+            book_code = BOOK_CODES.get(book)
+            if book_code:
+                last_verse = get_last_verse_in_chapter(book_code, chapter)
+                if last_verse > 0:
+                    text = get_bible_text(book, chapter, 1, last_verse)
+                else:
+                    text = get_bible_text(book, chapter, 1, 1)  # fallback
+            else:
+                text = colorize_text(f"Book '{book}' not found.", Colors.DEEP_RED)
+        else:
+            # Show specific verses
+            text = get_bible_text(book, chapter, start_verse, end_verse)
+        print(text)
+    else:
+        print(colorize_text("Invalid Bible reference format.", Colors.DEEP_RED))
+        print(colorize_text("Examples:", Colors.GRAY))
+        print("  --bible                           # List all books")
+        print("  --bible John                       # List John's chapters")
+        print("  --bible John 3                     # Show John chapter 3")
+        print("  --bible John 3:16                  # Show John 3:16")
+        print("  --bible John 3:16-17               # Show John 3:16-17")
+
+
+def get_random_verse(book_name=None):
+    """Get a random verse from the Bible"""
+    import random
+    
+    available_books = []
+    if os.path.exists(BIBLE_DIR):
+        available_books = [d for d in os.listdir(BIBLE_DIR) 
+                          if os.path.isdir(os.path.join(BIBLE_DIR, d))]
+    
+    # Filter by specific book if requested
+    if book_name:
+        book_code = BOOK_CODES.get(book_name)
+        if not book_code or book_code not in available_books:
+            return None, None, None, None, f"Book '{book_name}' not found."
+        available_books = [book_code]
+    
+    if not available_books:
+        return None, None, None, None, "No Bible books available."
+    
+    # Pick random book
+    book_code = random.choice(available_books)
+    
+    # Create reverse lookup for book name
+    code_to_name = {}
+    for name, code in BOOK_CODES.items():
+        code_to_name[code] = name
+    book_name = code_to_name.get(book_code, book_code)
+    
+    # Get available chapters
+    book_dir = os.path.join(BIBLE_DIR, book_code)
+    chapters = []
+    for file in os.listdir(book_dir):
+        if file.startswith("ch") and file.endswith(".txt"):
+            chapter_num = int(file[2:-4])
+            chapters.append(chapter_num)
+    
+    if not chapters:
+        return None, None, None, None, f"No chapters found in {book_name}."
+    
+    # Pick random chapter
+    chapter = random.choice(chapters)
+    
+    # Get verses from this chapter
+    chapter_file = os.path.join(book_dir, f"ch{chapter}.txt")
+    try:
+        with open(chapter_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        verses = []
+        current_verse = None
+        
+        for line in lines:
+            line = line.strip()
+            if line.isdigit():
+                if current_verse is not None:
+                    verses.append(current_verse)
+                current_verse = int(line)
+        
+        if current_verse is not None:
+            verses.append(current_verse)
+        
+        if not verses:
+            return None, None, None, None, f"No verses found in {book_name} {chapter}."
+        
+        # Pick random verse
+        verse_num = random.choice(verses)
+        return book_name, chapter, verse_num, verse_num, None
+        
+    except Exception as e:
+        return None, None, None, None, f"Error reading {book_name} {chapter}: {e}"
+
+
+def handle_random_verse(book_name=None):
+    """Handle random verse command"""
+    book_name, chapter, verse, end_verse, error = get_random_verse(book_name)
+    
+    if error:
+        print(colorize_text(error, Colors.DEEP_RED))
+        return
+    
+    text = get_bible_text(book_name, chapter, verse, end_verse)
+    print(text)
+
+
 def main():
     global no_color
     parser = argparse.ArgumentParser(description="Orthodox Christian calendar fetch tool")
     parser.add_argument("--reading", type=int, help="Display full text of specific reading number for today")
+    parser.add_argument("--bible", nargs="*", help="Display Bible text: --bible [BOOK] [CHAPTER[:VERSE[-VERSE]]]")
+    parser.add_argument("--random-verse", nargs="?", help="Display random verse: --random-verse [BOOK]")
     parser.add_argument("--no-color", action="store_true", help="Disable colored output")
     
     args = parser.parse_args()
     
     no_color = args.no_color
     
+    # Check which arguments were actually provided
+    provided_args = [arg for arg in sys.argv if arg.startswith('--')]
+    
     if args.reading is not None:
         if args.reading <= 0:
             print(colorize_text("Reading number must be positive.", Colors.DEEP_RED))
             return
         display_reading(args.reading)
+    elif '--bible' in provided_args:
+        handle_bible_command(args.bible)
+    elif '--random-verse' in provided_args:
+        handle_random_verse(args.random_verse)
     else:
         display_today()
 
