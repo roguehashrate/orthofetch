@@ -278,14 +278,70 @@ def display_reading(reading_number):
             return
 
         reading_ref = clean_readings[reading_idx]
-        parsed = parse_reading_reference(reading_ref)
         
-        if parsed:
-            book, chapter, start_verse, end_verse = parsed
-            text = get_bible_text(book, chapter, start_verse, end_verse)
-            print(text)
+        # Handle multiple verse ranges separated by commas
+        if ',' in reading_ref:
+            # Parse the first part to get book and chapter
+            first_part = reading_ref.split(',')[0].strip()
+            parsed = parse_reading_reference(first_part)
+            
+            if not parsed:
+                print(colorize_text(f"Could not parse reading reference: {first_part}", Colors.DEEP_RED))
+                return
+            
+            book, chapter, _, _ = parsed
+            
+            # Collect all verse ranges
+            verse_ranges = []
+            for part in [p.strip() for p in reading_ref.split(',')]:
+                if ':' in part or '.' in part:
+                    # Full reference with book and chapter
+                    range_parsed = parse_reading_reference(part)
+                    if range_parsed:
+                        _, _, start_verse, end_verse = range_parsed
+                        verse_ranges.append((start_verse, end_verse))
+                else:
+                    # Just verse range, use the book and chapter from first part
+                    if '-' in part:
+                        try:
+                            start_verse, end_verse = part.split('-')
+                            verse_ranges.append((int(start_verse), int(end_verse)))
+                        except ValueError:
+                            print(colorize_text(f"Could not parse verse range: {part}", Colors.DEEP_RED))
+                            return
+                    else:
+                        try:
+                            verse_ranges.append((int(part), int(part)))
+                        except ValueError:
+                            print(colorize_text(f"Could not parse verse: {part}", Colors.DEEP_RED))
+                            return
+            
+            if verse_ranges:
+                # Create header for the entire reading
+                header = f"{book} {chapter}"
+                colored_header = colorize_text(header, Colors.GOLD)
+                print(f"\n{colored_header}")
+                
+                # Collect all verses with range headers
+                all_verses = []
+                for start_verse, end_verse in verse_ranges:
+                    text = get_bible_text(book, chapter, start_verse, end_verse)
+                    # Add the text (which includes its own range header)
+                    all_verses.append(text)
+                
+                # Print all verses
+                for verse_line in all_verses:
+                    print(verse_line)
         else:
-            print(colorize_text(f"Could not parse reading reference: {reading_ref}", Colors.DEEP_RED))
+            # Single range - existing logic
+            parsed = parse_reading_reference(reading_ref)
+            
+            if parsed:
+                book, chapter, start_verse, end_verse = parsed
+                text = get_bible_text(book, chapter, start_verse, end_verse)
+                print(text)
+            else:
+                print(colorize_text(f"Could not parse reading reference: {reading_ref}", Colors.DEEP_RED))
             
     except ValueError:
         print("Please provide a valid reading number (e.g., --reading 1)")
