@@ -79,16 +79,38 @@ CROSS_WIDTH = max(len(line) for line in ORTHODOX_CROSS)
 
 
 def parse_reading_reference(reference):
-    """Parse a reading reference like 'Genesis 3:1-8' or 'John 10:9' or '3[1] Kings 2.6-14'"""
+    """Parse a reading reference like 'Genesis 3:1-8', 'John 10:9', 'Exodus 15.22-16.1', or '3[1] Kings 2.6-14'
+    
+    Returns:
+        None if parsing fails
+        Tuple of (book, start_chapter, start_verse, end_chapter, end_verse)
+        Always returns 5 elements for consistency
+    """
     # Handle special case for Wisdom of Solomon
     reference = reference.replace("Wisdom", "Wisdom of Solomon")
     
     # Handle special format like "3[1] Kings 2.6-14" - extract the second number in brackets
     reference = re.sub(r'(\d+)\[(\d+)\]\s+Kings', r'\2 Kings', reference)
     
-    # Pattern to match: Book Chapter:Verse-Verse or Book Chapter:Verse
-    pattern = r"([0-9A-Za-z\s]+)\s+(\d+)[.:](\d+)(?:[-:]?(\d+))?"
-    match = re.match(pattern, reference.strip())
+    # Convert dots to colons for consistency (but keep original for parsing cross-chapter ranges)
+    reference_clean = reference.replace('.', ':')
+    
+    # Check for cross-chapter pattern: Book Chapter:Verse-Chapter:Verse
+    cross_chapter_pattern = r"([0-9A-Za-z\s]+)\s+(\d+)[:](\d+)[-:](\d+)[:](\d+)"
+    cross_match = re.match(cross_chapter_pattern, reference_clean.strip())
+    
+    if cross_match:
+        book = cross_match.group(1).strip()
+        start_chapter = int(cross_match.group(2))
+        start_verse = int(cross_match.group(3))
+        end_chapter = int(cross_match.group(4))
+        end_verse = int(cross_match.group(5))
+        
+        return book, start_chapter, start_verse, end_chapter, end_verse
+    
+    # Pattern to match: Book Chapter:Verse-Verse or Book Chapter:Verse (single chapter)
+    single_chapter_pattern = r"([0-9A-Za-z\s]+)\s+(\d+)[:](\d+)(?:[-:]?(\d+))?"
+    match = re.match(single_chapter_pattern, reference_clean.strip())
     
     if match:
         book = match.group(1).strip()
@@ -96,7 +118,9 @@ def parse_reading_reference(reference):
         start_verse = int(match.group(3))
         end_verse = int(match.group(4)) if match.group(4) else start_verse
         
-        return book, chapter, start_verse, end_verse
+        # Return in 5-tuple format for consistency (start_chapter = end_chapter)
+        return book, chapter, start_verse, chapter, end_verse
+    
     return None
 
 
@@ -138,9 +162,15 @@ def get_last_verse_in_chapter(book_code, chapter):
         return 0
 
 
-def get_bible_text(book, chapter, start_verse, end_verse):
-    """Retrieve bible text for the specified reference"""
+def get_bible_text(book, start_chapter, start_verse, end_chapter=None, end_verse=None):
+    """Retrieve bible text for the specified reference. Supports cross-chapter ranges."""
     import json
+    
+    # Handle backward compatibility: if end_chapter is None, assume single chapter range
+    if end_chapter is None:
+        end_chapter = start_chapter
+        if end_verse is None:
+            end_verse = start_verse
     
     book_code = BOOK_CODES.get(book)
     if not book_code:
@@ -168,30 +198,59 @@ def get_bible_text(book, chapter, start_verse, end_verse):
         with open(json_file, "r", encoding="utf-8") as f:
             data = json.load(f)
         
-        # Find the requested chapter
-        chapter_data = None
-        for ch in data.get("chapters", []):
-            if ch.get("chapter") == chapter:
-                chapter_data = ch
-                break
-        
-        if not chapter_data:
-            return f"Chapter {chapter} of {book} not found."
-        
-        verses = chapter_data.get("verses", [])
-        
-        # Collect requested verses
+        all_chapters = {ch.get("chapter"): ch for ch in data.get("chapters", [])}
         result_lines = []
-        for verse_obj in verses:
-            verse_num = verse_obj.get("verse", 0)
-            if start_verse <= verse_num <= end_verse:
-                verse_text = verse_obj.get("text", "")
-                result_lines.append(f"{verse_num} {verse_text}")
+        
+        # Handle cross-chapter range
+        if end_chapter > start_chapter:
+            # First chapter: from start_verse to end of chapter
+            first_chapter = all_chapters.get(start_chapter)
+            if first_chapter:
+                for verse_obj in first_chapter.get("verses", []):
+                    verse_num = verse_obj.get("verse", 0)
+                    if verse_num >= start_verse:
+                        verse_text = verse_obj.get("text", "")
+                        result_lines.append(f"{verse_num} {verse_text}")
+            
+            # Middle chapters: all verses
+            for chapter_num in range(start_chapter + 1, end_chapter):
+                middle_chapter = all_chapters.get(chapter_num)
+                if middle_chapter:
+                    for verse_obj in middle_chapter.get("verses", []):
+                        verse_num = verse_obj.get("verse", 0)
+                        verse_text = verse_obj.get("text", "")
+                        result_lines.append(f"{verse_num} {verse_text}")
+            
+            # Last chapter: from verse 1 to end_verse
+            last_chapter = all_chapters.get(end_chapter)
+            if last_chapter:
+                for verse_obj in last_chapter.get("verses", []):
+                    verse_num = verse_obj.get("verse", 0)
+                    if verse_num <= end_verse:
+                        verse_text = verse_obj.get("text", "")
+                        result_lines.append(f"{verse_num} {verse_text}")
+        else:
+            # Single chapter range (original logic)
+            chapter_data = all_chapters.get(start_chapter)
+            if not chapter_data:
+                return f"Chapter {start_chapter} of {book} not found."
+            
+            verses = chapter_data.get("verses", [])
+            for verse_obj in verses:
+                verse_num = verse_obj.get("verse", 0)
+                if start_verse <= verse_num <= end_verse:
+                    verse_text = verse_obj.get("text", "")
+                    result_lines.append(f"{verse_num} {verse_text}")
         
         if result_lines:
-            header = f"{book} {chapter}:{start_verse}"
-            if end_verse != start_verse:
-                header += f"-{end_verse}"
+            # Create appropriate header
+            if end_chapter > start_chapter:
+                header = f"{book} {start_chapter}:{start_verse}-{end_chapter}:{end_verse}"
+            else:
+                header = f"{book} {start_chapter}:{start_verse}"
+                if end_verse != start_verse:
+                    header += f"-{end_verse}"
+            
             # Colorize the header
             colored_header = colorize_text(header, Colors.GOLD)
             colored_verses = []
@@ -213,10 +272,16 @@ def get_bible_text(book, chapter, start_verse, end_verse):
             
             return f"\n{colored_header}\n" + "\n".join(colored_verses)
         else:
-            return colorize_text(f"Verses {start_verse}-{end_verse} not found in {book} {chapter}.", Colors.GRAY)
+            if end_chapter > start_chapter:
+                return colorize_text(f"Verses {start_chapter}:{start_verse}-{end_chapter}:{end_verse} not found in {book}.", Colors.GRAY)
+            else:
+                return colorize_text(f"Verses {start_verse}-{end_verse} not found in {book} {start_chapter}.", Colors.GRAY)
             
     except Exception as e:
-        return f"Error reading {book} {chapter}:{start_verse}-{end_verse}: {e}"
+        if end_chapter > start_chapter:
+            return f"Error reading {book} {start_chapter}:{start_verse}-{end_chapter}:{end_verse}: {e}"
+        else:
+            return f"Error reading {book} {start_chapter}:{start_verse}-{end_verse}: {e}"
 
 
 def display_reading(reading_number):
@@ -300,18 +365,18 @@ def display_reading(reading_number):
                                     chapter = int(chapter_part)
                                     if '-' in verse_part:
                                         start_verse, end_verse = verse_part.split('-')
-                                        parsed_references.append((current_book, chapter, int(start_verse), int(end_verse)))
+                                        parsed_references.append((current_book, chapter, int(start_verse), chapter, int(end_verse)))
                                     else:
-                                        parsed_references.append((current_book, chapter, int(verse_part), int(verse_part)))
+                                        parsed_references.append((current_book, chapter, int(verse_part), chapter, int(verse_part)))
                                 else:
                                     # Handle "3:4-7" format
                                     chapter_part, verse_part = part.split(':')
                                     chapter = int(chapter_part)
                                     if '-' in verse_part:
                                         start_verse, end_verse = verse_part.split('-')
-                                        parsed_references.append((current_book, chapter, int(start_verse), int(end_verse)))
+                                        parsed_references.append((current_book, chapter, int(start_verse), chapter, int(end_verse)))
                                     else:
-                                        parsed_references.append((current_book, chapter, int(verse_part), int(verse_part)))
+                                        parsed_references.append((current_book, chapter, int(verse_part), chapter, int(verse_part)))
                             except ValueError:
                                 print(colorize_text(f"Could not parse chapter.verse reference: {part}", Colors.DEEP_RED))
                                 return
@@ -322,27 +387,27 @@ def display_reading(reading_number):
                         # Full reference with book name
                         range_parsed = parse_reading_reference(part)
                         if range_parsed:
-                            current_book, chapter, start_verse, end_verse = range_parsed
+                            current_book, start_chapter, start_verse, end_chapter, end_verse = range_parsed
                             if book is None:
                                 book = current_book
-                            parsed_references.append((current_book, chapter, start_verse, end_verse))
+                            parsed_references.append((current_book, start_chapter, start_verse, end_chapter, end_verse))
                         else:
                             print(colorize_text(f"Could not parse reading reference: {part}", Colors.DEEP_RED))
                             return
                 else:
                     # Just verse range - use book and chapter from first parsed part
                     if parsed_references:
-                        current_book, chapter, _, _ = parsed_references[0]
+                        current_book, start_chapter, _, _, _ = parsed_references[0]
                         if '-' in part:
                             try:
                                 start_verse, end_verse = part.split('-')
-                                parsed_references.append((current_book, chapter, int(start_verse), int(end_verse)))
+                                parsed_references.append((current_book, start_chapter, int(start_verse), start_chapter, int(end_verse)))
                             except ValueError:
                                 print(colorize_text(f"Could not parse verse range: {part}", Colors.DEEP_RED))
                                 return
                         else:
                             try:
-                                parsed_references.append((current_book, chapter, int(part), int(part)))
+                                parsed_references.append((current_book, start_chapter, int(part), start_chapter, int(part)))
                             except ValueError:
                                 print(colorize_text(f"Could not parse verse: {part}", Colors.DEEP_RED))
                                 return
@@ -354,32 +419,23 @@ def display_reading(reading_number):
                 # Check if all references are from the same book
                 all_same_book = all(ref[0] == parsed_references[0][0] for ref in parsed_references)
                 
-                if all_same_book and parsed_references[0][1] is None:
-                    # All references have same book, same chapter (from first reference)
-                    book, chapter, _, _ = parsed_references[0]
-                    header = f"{book} {chapter}"
-                    colored_header = colorize_text(header, Colors.GOLD)
-                    print(f"\n{colored_header}")
-                    
-                    # Collect verses for all ranges
-                    for ref_book, ref_chapter, start_verse, end_verse in parsed_references:
-                        text = get_bible_text(ref_book, chapter, start_verse, end_verse)
+                if all_same_book:
+                    # All references from same book - print each separately (they might be different chapters)
+                    for ref_book, start_chapter, start_verse, end_chapter, end_verse in parsed_references:
+                        text = get_bible_text(ref_book, start_chapter, start_verse, end_chapter, end_verse)
                         print(text)
                 else:
-                    # Different books or chapters - print each separately
-                    for ref_book, ref_chapter, start_verse, end_verse in parsed_references:
-                        if ref_chapter is None:
-                            # Use chapter from first reference
-                            ref_chapter = parsed_references[0][1]
-                        text = get_bible_text(ref_book, ref_chapter, start_verse, end_verse)
+                    # Different books - print each separately
+                    for ref_book, start_chapter, start_verse, end_chapter, end_verse in parsed_references:
+                        text = get_bible_text(ref_book, start_chapter, start_verse, end_chapter, end_verse)
                         print(text)
         else:
             # Single range - existing logic
             parsed = parse_reading_reference(reading_ref)
             
             if parsed:
-                book, chapter, start_verse, end_verse = parsed
-                text = get_bible_text(book, chapter, start_verse, end_verse)
+                book, start_chapter, start_verse, end_chapter, end_verse = parsed
+                text = get_bible_text(book, start_chapter, start_verse, end_chapter, end_verse)
                 print(text)
             else:
                 print(colorize_text(f"Could not parse reading reference: {reading_ref}", Colors.DEEP_RED))
