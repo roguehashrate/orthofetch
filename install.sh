@@ -24,51 +24,125 @@ fi
 BIBLE_DIR="$DATA_DIR/bible"
 mkdir -p "$BIBLE_DIR"
 
-# Function to download Bible books
+# Check for old folder-based structure and remove it if exists
+if [ -d "$BIBLE_DIR/GEN" ] || [ -d "$BIBLE_DIR/EXO" ] || [ -d "$BIBLE_DIR/LEV" ]; then
+    echo "Found old folder-based Bible structure, removing..."
+    rm -rf "$BIBLE_DIR"/*
+    echo "Old structure removed."
+fi
+
+echo "Installing Bible data to $BIBLE_DIR/"
+echo ""
+
+# Function to download Bible books as JSON files
 download_bible_book() {
-    local book=$1
-    local book_dir="$BIBLE_DIR/$book"
-    mkdir -p "$book_dir"
+    local book_code=$1
+    local book_name=$2
+    local json_filename=$3
+    local url="https://raw.githubusercontent.com/roguehashrate/orthofetch/main/data/bible/$json_filename"
+    local file="$BIBLE_DIR/$json_filename"
     
-    local chapters_downloaded=0
-    local chapters_skipped=0
+    # Check if file already exists
+    if [ -f "$file" ]; then
+        echo "  ✓ $book_name (already exists)"
+        return
+    fi
     
-    # Download all chapters for this book (1-50 chapters max)
-    for chapter in $(seq 1 50); do
-        local url="https://raw.githubusercontent.com/roguehashrate/orthofetch/main/data/bible/$book/ch$chapter.txt"
-        local file="$book_dir/ch$chapter.txt"
-        
-        # Check if file already exists
-        if [ -f "$file" ]; then
-            chapters_skipped=$((chapters_skipped + 1))
-            continue
-        fi
-        
-        # Try to download the chapter file, break if it doesn't exist
-        if curl -fsSL "$url" -o "$file" 2>/dev/null; then
-            chapters_downloaded=$((chapters_downloaded + 1))
-        else
-            rm -f "$file"  # Remove empty file if download failed
-            break
-        fi
-    done
-    
-    if [ $chapters_downloaded -gt 0 ]; then
-        echo "$book: Downloaded $chapters_downloaded new chapters"
+    # Try to download the JSON file
+    if curl -fsSL "$url" -o "$file" 2>/dev/null; then
+        echo "  ✓ $book_name"
     else
-        echo "$book: All chapters already exist ($chapters_skipped chapters)"
+        echo "  ✗ Failed to download $book_name"
+        rm -f "$file"  # Remove empty file if download failed
     fi
 }
 
-# List of Bible books to download
-BIBLE_BOOKS="GEN EXO LEV NUM DEU JOS JDG RUT 1SA 2SA 1KI 2KI 1CH 2CH EZR NEH EST JOB PSA PRO ECC SNG ISA JER LAM EZK DAN HOS JOL AMO OBA JON MIC NAM HAB ZEP HAG ZEC MAL MAT MRK LUK JHN ACT ROM 1CO 2CO GAL EPH PHP COL 1TH 2TH 1TI 2TI TIT PHM HEB JAS 1PE 2PE 1JO 2JO 3JO JUD REV"
-
 echo "Starting Bible data download..."
+echo "This may take a few minutes as we download 73 Bible books..."
+echo ""
 
-# Download each Bible book
-for book in $BIBLE_BOOKS; do
-    download_bible_book "$book"
-done
+# Download all Bible JSON files
+download_bible_book "GEN" "Genesis" "genesis.json"
+download_bible_book "EXO" "Exodus" "exodus.json"
+download_bible_book "LEV" "Leviticus" "leviticus.json"
+download_bible_book "NUM" "Numbers" "numbers.json"
+download_bible_book "DEU" "Deuteronomy" "deuteronomy.json"
+download_bible_book "JOS" "Joshua" "joshua.json"
+download_bible_book "JDG" "Judges" "judges.json"
+download_bible_book "RUT" "Ruth" "ruth.json"
+download_bible_book "1SA" "1 Samuel" "1samuel.json"
+download_bible_book "2SA" "2 Samuel" "2samuel.json"
+download_bible_book "1KI" "1 Kings" "1kings.json"
+download_bible_book "2KI" "2 Kings" "2kings.json"
+download_bible_book "1CH" "1 Chronicles" "1chronicles.json"
+download_bible_book "2CH" "2 Chronicles" "2chronicles.json"
+download_bible_book "EZR" "Ezra" "1ezra.json"
+download_bible_book "EZR" "2 Ezra" "2ezra.json"
+download_bible_book "NEH" "Nehemiah" "nehemiah.json"
+download_bible_book "EST" "Esther" "esther.json"
+download_bible_book "JOB" "Job" "job.json"
+download_bible_book "PSA" "Psalms" "psalms.json"
+download_bible_book "PRO" "Proverbs" "proverbs.json"
+download_bible_book "ECC" "Ecclesiastes" "ecclesiastes.json"
+download_bible_book "SNG" "Song of Solomon" "songs.json"
+download_bible_book "ISA" "Isaiah" "isaiah.json"
+download_bible_book "JER" "Jeremiah" "jeremiah.json"
+download_bible_book "LAM" "Lamentations" "lamentations.json"
+download_bible_book "EZK" "Ezekiel" "ezekiel.json"
+download_bible_book "DAN" "Daniel" "daniel.json"
+download_bible_book "HOS" "Hosea" "hosea.json"
+download_bible_book "JOL" "Joel" "joel.json"
+download_bible_book "AMO" "Amos" "amos.json"
+download_bible_book "OBA" "Obadiah" "obadiah.json"
+download_bible_book "JON" "Jonah" "jonah.json"
+download_bible_book "MIC" "Micah" "micah.json"
+download_bible_book "NAM" "Nahum" "nahum.json"
+download_bible_book "HAB" "Habakkuk" "habakkuk.json"
+download_bible_book "ZEP" "Zephaniah" "zephaniah.json"
+download_bible_book "HAG" "Haggai" "haggai.json"
+download_bible_book "ZEC" "Zechariah" "zechariah.json"
+download_bible_book "MAL" "Malachi" "malachi.json"
+download_bible_book "MAT" "Matthew" "matthew.json"
+download_bible_book "MRK" "Mark" "mark.json"
+download_bible_book "LUK" "Luke" "luke.json"
+download_bible_book "JHN" "John" "john.json"
+download_bible_book "ACT" "Acts" "acts.json"
+download_bible_book "ROM" "Romans" "romans.json"
+download_bible_book "1CO" "1 Corinthians" "1corinthians.json"
+download_bible_book "2CO" "2 Corinthians" "2corinthians.json"
+download_bible_book "GAL" "Galatians" "galatians.json"
+download_bible_book "EPH" "Ephesians" "ephesians.json"
+download_bible_book "PHP" "Philippians" "philippians.json"
+download_bible_book "COL" "Colossians" "colossians.json"
+download_bible_book "1TH" "1 Thessalonians" "1thessalonians.json"
+download_bible_book "2TH" "2 Thessalonians" "2thessalonians.json"
+download_bible_book "1TI" "1 Timothy" "1timothy.json"
+download_bible_book "2TI" "2 Timothy" "2timothy.json"
+download_bible_book "TIT" "Titus" "titus.json"
+download_bible_book "PHM" "Philemon" "philemon.json"
+download_bible_book "HEB" "Hebrews" "hebrews.json"
+download_bible_book "JAS" "James" "james.json"
+download_bible_book "1PE" "1 Peter" "1peter.json"
+download_bible_book "2PE" "2 Peter" "2peter.json"
+download_bible_book "1JO" "1 John" "1john.json"
+download_bible_book "2JO" "2 John" "2john.json"
+download_bible_book "3JO" "3 John" "3john.json"
+download_bible_book "JUD" "Jude" "jude.json"
+download_bible_book "REV" "Revelation" "revelation.json"
+
+# Download Deuterocanonical books
+download_bible_book "TOB" "Tobit" "tobit.json"
+download_bible_book "JDT" "Judith" "judith.json"
+download_bible_book "WIS" "Wisdom of Solomon" "wisdom.json"
+download_bible_book "SIR" "Sirach" "sirach.json"
+download_bible_book "BAR" "Baruch" "baruch.json"
+download_bible_book "1MA" "1 Maccabees" "1maccabees.json"
+download_bible_book "2MA" "2 Maccabees" "2maccabees.json"
+
+# Download additional deuterocanonical books
+download_bible_book "3MA" "3 Maccabees" "3maccabees.json"
+download_bible_book "4MA" "4 Maccabees" "4maccabees.json"
+download_bible_book "ESG" "Esther (Greek)" "epistle.json"
 
 echo ""
 echo "[*] Installation complete!"
