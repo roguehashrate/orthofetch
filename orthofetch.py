@@ -79,9 +79,12 @@ CROSS_WIDTH = max(len(line) for line in ORTHODOX_CROSS)
 
 
 def parse_reading_reference(reference):
-    """Parse a reading reference like 'Genesis 3:1-8' or 'John 10:9'"""
+    """Parse a reading reference like 'Genesis 3:1-8' or 'John 10:9' or '3[1] Kings 2.6-14'"""
     # Handle special case for Wisdom of Solomon
     reference = reference.replace("Wisdom", "Wisdom of Solomon")
+    
+    # Handle special format like "3[1] Kings 2.6-14" - extract the second number in brackets
+    reference = re.sub(r'(\d+)\[(\d+)\]\s+Kings', r'\2 Kings', reference)
     
     # Pattern to match: Book Chapter:Verse-Verse or Book Chapter:Verse
     pattern = r"([0-9A-Za-z\s]+)\s+(\d+)[.:](\d+)(?:[-:]?(\d+))?"
@@ -99,64 +102,91 @@ def parse_reading_reference(reference):
 
 def get_last_verse_in_chapter(book_code, chapter):
     """Get the last verse number in a chapter"""
-    chapter_file = os.path.join(BIBLE_DIR, book_code, f"ch{chapter}.txt")
-    if not os.path.exists(chapter_file):
+    import json
+    
+    # Map book code to JSON filename (lowercase)
+    code_to_name = {}
+    for name, code in BOOK_CODES.items():
+        code_to_name[code] = name.lower().replace(' ', '_').replace('of_solomon', '')
+    
+    # Handle special cases for book names
+    json_filename = code_to_name.get(book_code, book_code.lower())
+    if json_filename.startswith('1_') or json_filename.startswith('2_') or json_filename.startswith('3_'):
+        json_filename = json_filename.replace('_', '')
+    elif 'wisdom' in json_filename:
+        json_filename = 'wisdom'
+    elif 'song' in json_filename:
+        json_filename = 'songs'
+    
+    json_file = os.path.join(BIBLE_DIR, f"{json_filename}.json")
+    if not os.path.exists(json_file):
         return 0
     
     try:
-        with open(chapter_file, "r", encoding="utf-8") as f:
-            lines = f.readlines()
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
         
-        last_verse = 0
-        for line in lines:
-            line = line.strip()
-            if line.isdigit():
-                last_verse = int(line)
+        # Find the requested chapter
+        for chapter_data in data.get("chapters", []):
+            if chapter_data.get("chapter") == chapter:
+                verses = chapter_data.get("verses", [])
+                if verses:
+                    return verses[-1].get("verse", 0)
         
-        return last_verse
+        return 0
     except Exception:
         return 0
 
 
 def get_bible_text(book, chapter, start_verse, end_verse):
     """Retrieve bible text for the specified reference"""
+    import json
+    
     book_code = BOOK_CODES.get(book)
     if not book_code:
         return f"Book '{book}' not found."
     
-    chapter_file = os.path.join(BIBLE_DIR, book_code, f"ch{chapter}.txt")
-    if not os.path.exists(chapter_file):
-        return f"Chapter {chapter} of {book} not found."
+    # Map book code to JSON filename (lowercase)
+    code_to_name = {}
+    for name, code in BOOK_CODES.items():
+        code_to_name[code] = name.lower().replace(' ', '_').replace('of_solomon', '')
+    
+    # Handle special cases for book names
+    json_filename = code_to_name.get(book_code, book_code.lower())
+    if json_filename.startswith('1_') or json_filename.startswith('2_') or json_filename.startswith('3_'):
+        json_filename = json_filename.replace('_', '')
+    elif 'wisdom' in json_filename:
+        json_filename = 'wisdom'
+    elif 'song' in json_filename:
+        json_filename = 'songs'
+    
+    json_file = os.path.join(BIBLE_DIR, f"{json_filename}.json")
+    if not os.path.exists(json_file):
+        return f"Book {book} not found."
     
     try:
-        with open(chapter_file, "r", encoding="utf-8") as f:
-            lines = f.readlines()
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
         
-        verses = {}
-        current_verse = None
-        verse_text = []
+        # Find the requested chapter
+        chapter_data = None
+        for ch in data.get("chapters", []):
+            if ch.get("chapter") == chapter:
+                chapter_data = ch
+                break
         
-        for line in lines:
-            line = line.strip()
-            if line.isdigit():
-                if current_verse is not None:
-                    verses[current_verse] = " ".join(verse_text)
-                current_verse = int(line)
-                verse_text = []
-            elif current_verse is not None:
-                verse_text.append(line)
+        if not chapter_data:
+            return f"Chapter {chapter} of {book} not found."
         
-        # Add the last verse
-        if current_verse is not None:
-            verses[current_verse] = " ".join(verse_text)
+        verses = chapter_data.get("verses", [])
         
         # Collect requested verses
         result_lines = []
-        for verse_num in range(start_verse, end_verse + 1):
-            if verse_num in verses:
-                result_lines.append(f"{verse_num} {verses[verse_num]}")
-            else:
-                result_lines.append(f"{verse_num} [Verse not found]")
+        for verse_obj in verses:
+            verse_num = verse_obj.get("verse", 0)
+            if start_verse <= verse_num <= end_verse:
+                verse_text = verse_obj.get("text", "")
+                result_lines.append(f"{verse_num} {verse_text}")
         
         if result_lines:
             header = f"{book} {chapter}:{start_verse}"
@@ -308,6 +338,11 @@ def wrap_readings(text, width):
         else:
             clean_readings.append(reading)
     
+    # Clean up Kings book format for display
+    for i in range(len(clean_readings)):
+        # Convert "3[1] Kings" to "1 Kings" for display
+        clean_readings[i] = re.sub(r'\d+\[(\d+)\]\s+Kings', r'\1 Kings', clean_readings[i])
+    
     # Filter out any empty entries
     clean_readings = [r for r in clean_readings if r and not r.isdigit()]
     
@@ -436,6 +471,8 @@ def display_today():
 
 def list_bible_books():
     """Display all available Bible books"""
+    import json
+    
     print(colorize_text("Available Bible Books:", Colors.GOLD))
     print()
     
@@ -462,21 +499,37 @@ def list_bible_books():
     for name, code in BOOK_CODES.items():
         code_to_name[code] = name
     
-    # Check which books are actually available
-    available_books = []
+    # Create filename to book code mapping
+    filename_to_code = {}
+    for name, code in BOOK_CODES.items():
+        # Convert book name to expected JSON filename
+        filename = name.lower().replace(' ', '_').replace('of_solomon', '')
+        if filename.startswith('1_') or filename.startswith('2_') or filename.startswith('3_'):
+            filename = filename.replace('_', '')
+        elif 'wisdom' in filename:
+            filename = 'wisdom'
+        elif 'song' in filename:
+            filename = 'songs'
+        filename_to_code[filename] = code
+    
+    # Check which books are actually available from JSON files
+    available_codes = []
     if os.path.exists(BIBLE_DIR):
-        available_books = [d for d in os.listdir(BIBLE_DIR) 
-                          if os.path.isdir(os.path.join(BIBLE_DIR, d))]
+        for file in os.listdir(BIBLE_DIR):
+            if file.endswith('.json'):
+                filename = file[:-5]  # Remove .json extension
+                if filename in filename_to_code:
+                    available_codes.append(filename_to_code[filename])
     
     # Organize books by category
-    for book in sorted(available_books):
-        if book in code_to_name:
-            book_name = code_to_name[book]
-            if book in ot_books:
+    for code in sorted(available_codes):
+        if code in code_to_name:
+            book_name = code_to_name[code]
+            if code in ot_books:
                 old_testament.append(book_name)
-            elif book in nt_books:
+            elif code in nt_books:
                 new_testament.append(book_name)
-            elif book in deut_books:
+            elif code in deut_books:
                 deuterocanonical.append(book_name)
     
     # Display Old Testament
@@ -502,37 +555,56 @@ def list_bible_books():
 
 def list_chapters(book_name):
     """Display available chapters for a specific book"""
+    import json
+    
     book_code = BOOK_CODES.get(book_name)
     if not book_code:
         print(colorize_text(f"Book '{book_name}' not found.", Colors.DEEP_RED))
         print(colorize_text("Use --bible to see available books.", Colors.GRAY))
         return
     
-    book_dir = os.path.join(BIBLE_DIR, book_code)
-    if not os.path.exists(book_dir):
-        print(colorize_text(f"Book directory for {book_name} not found.", Colors.DEEP_RED))
+    # Map book code to JSON filename (lowercase)
+    code_to_name = {}
+    for name, code in BOOK_CODES.items():
+        code_to_name[code] = name.lower().replace(' ', '_').replace('of_solomon', '')
+    
+    # Handle special cases for book names
+    json_filename = code_to_name.get(book_code, book_code.lower())
+    if json_filename.startswith('1_') or json_filename.startswith('2_') or json_filename.startswith('3_'):
+        json_filename = json_filename.replace('_', '')
+    elif 'wisdom' in json_filename:
+        json_filename = 'wisdom'
+    elif 'song' in json_filename:
+        json_filename = 'songs'
+    
+    json_file = os.path.join(BIBLE_DIR, f"{json_filename}.json")
+    if not os.path.exists(json_file):
+        print(colorize_text(f"Book file for {book_name} not found.", Colors.DEEP_RED))
         return
     
-    chapters = []
-    for file in sorted(os.listdir(book_dir)):
-        if file.startswith("ch") and file.endswith(".txt"):
-            chapter_num = file[2:-4]  # Extract number between "ch" and ".txt"
-            chapters.append(int(chapter_num))
-    
-    if chapters:
-        print(colorize_text(f"Available chapters in {book_name}:", Colors.GOLD))
-        print()
+    try:
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
         
-        # Display chapters in rows of 10
-        for i in range(0, len(chapters), 10):
-            row_chapters = chapters[i:i+10]
-            chapter_strs = [colorize_text(str(ch), Colors.CYAN) for ch in row_chapters]
-            print("  " + "  ".join(chapter_strs))
+        chapters = [ch.get("chapter", 0) for ch in data.get("chapters", []) if ch.get("chapter")]
         
-        print(f"\nTotal chapters: {len(chapters)}")
-        print(colorize_text(f"Example usage: --bible {book_name} {chapters[0]} or --bible {book_name} {chapters[0]}:1", Colors.GRAY))
-    else:
-        print(colorize_text(f"No chapters found for {book_name}.", Colors.DEEP_RED))
+        if chapters:
+            print(colorize_text(f"Available chapters in {book_name}:", Colors.GOLD))
+            print()
+            
+            # Display chapters in rows of 10
+            for i in range(0, len(chapters), 10):
+                row_chapters = chapters[i:i+10]
+                chapter_strs = [colorize_text(str(ch), Colors.CYAN) for ch in row_chapters]
+                print("  " + "  ".join(chapter_strs))
+            
+            print(f"\nTotal chapters: {len(chapters)}")
+            print(colorize_text(f"Example usage: --bible {book_name} {chapters[0]} or --bible {book_name} {chapters[0]}:1", Colors.GRAY))
+        else:
+            print(colorize_text(f"No chapters found for {book_name}.", Colors.DEEP_RED))
+            
+    except Exception as e:
+        print(colorize_text(f"Error reading {book_name}: {e}", Colors.DEEP_RED))
 
 
 def parse_bible_reference(args):
@@ -614,73 +686,79 @@ def handle_bible_command(args):
 def get_random_verse(book_name=None):
     """Get a random verse from the Bible"""
     import random
+    import json
     
-    available_books = []
+    # Create filename to book code mapping
+    filename_to_code = {}
+    code_to_name = {}
+    for name, code in BOOK_CODES.items():
+        code_to_name[code] = name
+        # Convert book name to expected JSON filename
+        filename = name.lower().replace(' ', '_').replace('of_solomon', '')
+        if filename.startswith('1_') or filename.startswith('2_') or filename.startswith('3_'):
+            filename = filename.replace('_', '')
+        elif 'wisdom' in filename:
+            filename = 'wisdom'
+        elif 'song' in filename:
+            filename = 'songs'
+        filename_to_code[filename] = code
+    
+    # Get available books from JSON files
+    available_codes = []
     if os.path.exists(BIBLE_DIR):
-        available_books = [d for d in os.listdir(BIBLE_DIR) 
-                          if os.path.isdir(os.path.join(BIBLE_DIR, d))]
+        for file in os.listdir(BIBLE_DIR):
+            if file.endswith('.json'):
+                filename = file[:-5]  # Remove .json extension
+                if filename in filename_to_code:
+                    available_codes.append(filename_to_code[filename])
     
     # Filter by specific book if requested
     if book_name:
         book_code = BOOK_CODES.get(book_name)
-        if not book_code or book_code not in available_books:
+        if not book_code or book_code not in available_codes:
             return None, None, None, None, f"Book '{book_name}' not found."
-        available_books = [book_code]
+        available_codes = [book_code]
     
-    if not available_books:
+    if not available_codes:
         return None, None, None, None, "No Bible books available."
     
     # Pick random book
-    book_code = random.choice(available_books)
-    
-    # Create reverse lookup for book name
-    code_to_name = {}
-    for name, code in BOOK_CODES.items():
-        code_to_name[code] = name
+    book_code = random.choice(available_codes)
     book_name = code_to_name.get(book_code, book_code)
     
-    # Get available chapters
-    book_dir = os.path.join(BIBLE_DIR, book_code)
-    chapters = []
-    for file in os.listdir(book_dir):
-        if file.startswith("ch") and file.endswith(".txt"):
-            chapter_num = int(file[2:-4])
-            chapters.append(chapter_num)
+    # Get JSON filename
+    json_filename = None
+    for filename, code in filename_to_code.items():
+        if code == book_code:
+            json_filename = filename
+            break
     
-    if not chapters:
-        return None, None, None, None, f"No chapters found in {book_name}."
+    if not json_filename:
+        return None, None, None, None, f"Could not find JSON file for {book_name}."
     
-    # Pick random chapter
-    chapter = random.choice(chapters)
+    json_file = os.path.join(BIBLE_DIR, f"{json_filename}.json")
     
-    # Get verses from this chapter
-    chapter_file = os.path.join(book_dir, f"ch{chapter}.txt")
     try:
-        with open(chapter_file, "r", encoding="utf-8") as f:
-            lines = f.readlines()
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
         
-        verses = []
-        current_verse = None
+        # Get all chapters and verses
+        all_verses = []
+        for chapter_data in data.get("chapters", []):
+            chapter_num = chapter_data.get("chapter", 0)
+            for verse_obj in chapter_data.get("verses", []):
+                verse_num = verse_obj.get("verse", 0)
+                all_verses.append((chapter_num, verse_num))
         
-        for line in lines:
-            line = line.strip()
-            if line.isdigit():
-                if current_verse is not None:
-                    verses.append(current_verse)
-                current_verse = int(line)
-        
-        if current_verse is not None:
-            verses.append(current_verse)
-        
-        if not verses:
-            return None, None, None, None, f"No verses found in {book_name} {chapter}."
+        if not all_verses:
+            return None, None, None, None, f"No verses found in {book_name}."
         
         # Pick random verse
-        verse_num = random.choice(verses)
-        return book_name, chapter, verse_num, verse_num, None
+        chapter, verse = random.choice(all_verses)
+        return book_name, chapter, verse, verse, None
         
     except Exception as e:
-        return None, None, None, None, f"Error reading {book_name} {chapter}: {e}"
+        return None, None, None, None, f"Error reading {book_name}: {e}"
 
 
 def handle_random_verse(book_name=None):
