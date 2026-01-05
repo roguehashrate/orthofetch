@@ -281,57 +281,98 @@ def display_reading(reading_number):
         
         # Handle multiple verse ranges separated by commas
         if ',' in reading_ref:
-            # Parse the first part to get book and chapter
-            first_part = reading_ref.split(',')[0].strip()
-            parsed = parse_reading_reference(first_part)
+            # Parse all parts to get individual references
+            parts = [p.strip() for p in reading_ref.split(',')]
+            parsed_references = []
+            book = None
             
-            if not parsed:
-                print(colorize_text(f"Could not parse reading reference: {first_part}", Colors.DEEP_RED))
-                return
-            
-            book, chapter, _, _ = parsed
-            
-            # Collect all verse ranges
-            verse_ranges = []
-            for part in [p.strip() for p in reading_ref.split(',')]:
+            for part in parts:
                 if ':' in part or '.' in part:
-                    # Full reference with book and chapter
-                    range_parsed = parse_reading_reference(part)
-                    if range_parsed:
-                        _, _, start_verse, end_verse = range_parsed
-                        verse_ranges.append((start_verse, end_verse))
-                else:
-                    # Just verse range, use the book and chapter from first part
-                    if '-' in part:
-                        try:
-                            start_verse, end_verse = part.split('-')
-                            verse_ranges.append((int(start_verse), int(end_verse)))
-                        except ValueError:
-                            print(colorize_text(f"Could not parse verse range: {part}", Colors.DEEP_RED))
+                    # Check if this looks like a full reference (has book name) or just chapter.verses
+                    if part[0].isdigit():
+                        # This looks like "3.4-7" (chapter.verses without book)
+                        if parsed_references:
+                            # Use book from first reference
+                            current_book = parsed_references[0][0]
+                            try:
+                                if '.' in part:
+                                    chapter_part, verse_part = part.split('.')
+                                    chapter = int(chapter_part)
+                                    if '-' in verse_part:
+                                        start_verse, end_verse = verse_part.split('-')
+                                        parsed_references.append((current_book, chapter, int(start_verse), int(end_verse)))
+                                    else:
+                                        parsed_references.append((current_book, chapter, int(verse_part), int(verse_part)))
+                                else:
+                                    # Handle "3:4-7" format
+                                    chapter_part, verse_part = part.split(':')
+                                    chapter = int(chapter_part)
+                                    if '-' in verse_part:
+                                        start_verse, end_verse = verse_part.split('-')
+                                        parsed_references.append((current_book, chapter, int(start_verse), int(end_verse)))
+                                    else:
+                                        parsed_references.append((current_book, chapter, int(verse_part), int(verse_part)))
+                            except ValueError:
+                                print(colorize_text(f"Could not parse chapter.verse reference: {part}", Colors.DEEP_RED))
+                                return
+                        else:
+                            print(colorize_text(f"Could not determine book for reference: {part}", Colors.DEEP_RED))
                             return
                     else:
-                        try:
-                            verse_ranges.append((int(part), int(part)))
-                        except ValueError:
-                            print(colorize_text(f"Could not parse verse: {part}", Colors.DEEP_RED))
+                        # Full reference with book name
+                        range_parsed = parse_reading_reference(part)
+                        if range_parsed:
+                            current_book, chapter, start_verse, end_verse = range_parsed
+                            if book is None:
+                                book = current_book
+                            parsed_references.append((current_book, chapter, start_verse, end_verse))
+                        else:
+                            print(colorize_text(f"Could not parse reading reference: {part}", Colors.DEEP_RED))
                             return
+                else:
+                    # Just verse range - use book and chapter from first parsed part
+                    if parsed_references:
+                        current_book, chapter, _, _ = parsed_references[0]
+                        if '-' in part:
+                            try:
+                                start_verse, end_verse = part.split('-')
+                                parsed_references.append((current_book, chapter, int(start_verse), int(end_verse)))
+                            except ValueError:
+                                print(colorize_text(f"Could not parse verse range: {part}", Colors.DEEP_RED))
+                                return
+                        else:
+                            try:
+                                parsed_references.append((current_book, chapter, int(part), int(part)))
+                            except ValueError:
+                                print(colorize_text(f"Could not parse verse: {part}", Colors.DEEP_RED))
+                                return
+                    else:
+                        print(colorize_text(f"Could not determine book for verse range: {part}", Colors.DEEP_RED))
+                        return
             
-            if verse_ranges:
-                # Create header for the entire reading
-                header = f"{book} {chapter}"
-                colored_header = colorize_text(header, Colors.GOLD)
-                print(f"\n{colored_header}")
+            if parsed_references:
+                # Check if all references are from the same book
+                all_same_book = all(ref[0] == parsed_references[0][0] for ref in parsed_references)
                 
-                # Collect all verses with range headers
-                all_verses = []
-                for start_verse, end_verse in verse_ranges:
-                    text = get_bible_text(book, chapter, start_verse, end_verse)
-                    # Add the text (which includes its own range header)
-                    all_verses.append(text)
-                
-                # Print all verses
-                for verse_line in all_verses:
-                    print(verse_line)
+                if all_same_book and parsed_references[0][1] is None:
+                    # All references have same book, same chapter (from first reference)
+                    book, chapter, _, _ = parsed_references[0]
+                    header = f"{book} {chapter}"
+                    colored_header = colorize_text(header, Colors.GOLD)
+                    print(f"\n{colored_header}")
+                    
+                    # Collect verses for all ranges
+                    for ref_book, ref_chapter, start_verse, end_verse in parsed_references:
+                        text = get_bible_text(ref_book, chapter, start_verse, end_verse)
+                        print(text)
+                else:
+                    # Different books or chapters - print each separately
+                    for ref_book, ref_chapter, start_verse, end_verse in parsed_references:
+                        if ref_chapter is None:
+                            # Use chapter from first reference
+                            ref_chapter = parsed_references[0][1]
+                        text = get_bible_text(ref_book, ref_chapter, start_verse, end_verse)
+                        print(text)
         else:
             # Single range - existing logic
             parsed = parse_reading_reference(reading_ref)
