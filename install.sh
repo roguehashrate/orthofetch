@@ -142,7 +142,7 @@ download_bible_book "2MA" "2 Maccabees" "2maccabees.json"
 # Download additional deuterocanonical books
 download_bible_book "3MA" "3 Maccabees" "3maccabees.json"
 download_bible_book "4MA" "4 Maccabees" "4maccabees.json"
-download_bible_book "ESG" "Esther (Greek)" "epistle.json"
+download_bible_book "ESG" "Esther" "epistle.json"
 
 echo ""
 echo "[*] Installation complete!"
