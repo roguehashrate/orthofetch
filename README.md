@@ -104,10 +104,11 @@ This will take the color out of it making it plain text. This will also work wit
 
 ## Data
 - 
-**Updated (2026-01-05):** Now uses **JSON-based Bible structure** for improved performance and maintainability
-- Supports **73 Bible books**: 66 canonical + 7 deuterocanonical books
-- **Improved parsing**: Better handling of multi-word book names and various verse reference formats
-- **Clean installation**: Automatically removes old folder structure and installs JSON files
+Books come from the JSON files from [l1lsm0k13's AncientBible project](https://l1lsm0k13.github.io/AncientBible/).
+
+
+Calendar comes from [orthocal](https://orthocal.info/).
+
 
 ---
 
