@@ -98,7 +98,7 @@ This will take the color out of it making it plain text. This will also work wit
 
 ## Data
 
-Currently supports the year 2026. Future updates may include additional years or maybe things to make it prettier.
+Currently supports the year 2026.
 
 ---
 
