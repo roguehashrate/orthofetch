@@ -41,12 +41,18 @@ orthofetch --reading [NUM]
 This will give you the full text of a specific reading for today. So if you see [1] John 3.15-18 for example you will get those verses to read.
 
 ### Bible Reading
-
 ```bash
 orthofetch --bible
 ```
 
-This will display all available Bible books organized by testament.
+This will display all available Bible books organized by testament. 
+
+**Updated Command Features:**
+- **Multi-word book support**: `--bible "1 Kings" 3.1-5` works perfectly
+- **Format flexibility**: Supports both dot (`3.1-5`) and colon (`3:1-5`) verse references
+- **Complete reference options**: Single verse, verse ranges, full chapters
+- **Deuterocanonical support**: `--bible "4 Maccabees"` and all deuterocanonical books
+- **JSON-based structure**: Fast loading from JSON files instead of text files
 
 ```bash
 orthofetch --bible [BOOK]
@@ -97,8 +103,11 @@ This will take the color out of it making it plain text. This will also work wit
 ---
 
 ## Data
-
-Currently supports the year 2026.
+- 
+**Updated (2026-01-05):** Now uses **JSON-based Bible structure** for improved performance and maintainability
+- Supports **73 Bible books**: 66 canonical + 7 deuterocanonical books
+- **Improved parsing**: Better handling of multi-word book names and various verse reference formats
+- **Clean installation**: Automatically removes old folder structure and installs JSON files
 
 ---
 
