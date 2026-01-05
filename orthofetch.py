@@ -52,7 +52,7 @@ BOOK_CODES = {
     "2 Thessalonians": "2TH", "1 Timothy": "1TI", "2 Timothy": "2TI", "Titus": "TIT",
     "Philemon": "PHM", "Hebrews": "HEB", "James": "JAS", "1 Peter": "1PE", "2 Peter": "2PE",
     "1 John": "1JN", "2 John": "2JN", "3 John": "3JN", "Jude": "JUD", "Revelation": "REV",
-    "Wisdom of Solomon": "WIS", "Sirach": "SIR", "Baruch": "BAR", "1 Maccabees": "1MA",
+    "Wisdom of Solomon": "WIS", "Sirach": "SIR", "Baruch": "BAR", "1 Maccabees": "1MA", "2 Maccabees": "2MA", "3 Maccabees": "3MA", "4 Maccabees": "4MA", "Tobit": "TOB", "Judith": "JDT", "Esther (Greek)": "ESG",
     "2 Maccabees": "2MA", "Tobit": "TOB", "Judith": "JDT", "Esther (Greek)": "ESG",
     "Psalm 151": "P151", "Prayer of Manasseh": "MAN", "1 Esdras": "1ES", "2 Esdras": "2ES"
 }
@@ -616,8 +616,62 @@ def parse_bible_reference(args):
         # Just book name
         return args[0], None, None, None
     elif len(args) == 2:
-        # Book and chapter OR Book and chapter:verse
-        if ':' in args[1]:
+        # Book and chapter OR Book and chapter:verse (handle multi-word books)
+        potential_book = args[0]
+        if len(args) >= 2 and f"{args[0]} {args[1]}" in BOOK_CODES:
+            # Multi-word book like "1 Kings"
+            potential_book = f"{args[0]} {args[1]}"
+            book = potential_book
+            if len(args) == 2:
+                # Just book name
+                return book, None, None, None
+            else:
+                # Book and chapter:verse
+                remaining_args = args[2:] if len(args) > 2 else []
+                reference_str = ' '.join(remaining_args) if remaining_args else args[2] if len(args) > 2 else ''
+                if ':' in reference_str:
+                    # Format: "1 Kings 3:1-5"
+                    try:
+                        chapter_part, verse_part = reference_str.split(':')
+                        chapter = int(chapter_part)
+                        if '-' in verse_part:
+                            # Range: 3:1-5
+                            start_verse, end_verse = verse_part.split('-')
+                            verse = int(start_verse)
+                            end_verse = int(end_verse)
+                            return book, chapter, verse, end_verse
+                        else:
+                            # Single verse: 3:1
+                            verse = int(verse_part)
+                            return book, chapter, verse, verse
+                    except ValueError:
+                        return None, None, None, None
+                elif '.' in reference_str:
+                    # Format: "1 Kings 3.1-5" - convert dot to colon
+                    reference_fixed = reference_str.replace('.', ':')
+                    try:
+                        chapter_part, verse_part = reference_fixed.split(':')
+                        chapter = int(chapter_part)
+                        if '-' in verse_part:
+                            # Range: 3:1-5
+                            start_verse, end_verse = verse_part.split('-')
+                            verse = int(start_verse)
+                            end_verse = int(end_verse)
+                            return book, chapter, verse, end_verse
+                        else:
+                            # Single verse: 3:1
+                            verse = int(verse_part)
+                            return book, chapter, verse, verse
+                    except ValueError:
+                        return None, None, None, None
+                else:
+                    # Book and chapter only (e.g., "1 Kings 3")
+                    try:
+                        chapter = int(remaining_args[-1]) if remaining_args else None
+                        return book, chapter, None, None
+                    except ValueError:
+                        return None, None, None, None
+        elif ':' in args[1]:
             # Format: John 3:16
             try:
                 chapter_part, verse_part = args[1].split(':')
@@ -639,6 +693,117 @@ def parse_bible_reference(args):
             try:
                 chapter = int(args[1])
                 return args[0], chapter, None, None
+            except ValueError:
+                return None, None, None, None
+    elif len(args) >= 3:
+        # Book with spaces and chapter:verse (e.g., "1 Kings 3.1-5" or "1 Kings 3:1-5")
+        # Find book name by combining arguments until we find a valid book
+        book_found = None
+        ref_start_idx = None
+        
+        # Try different combinations to find valid book
+        for i in range(min(len(args), 3), 0, -1):  # Start from longer combos, go down
+            potential_book = ' '.join(args[:i])
+            if potential_book in BOOK_CODES:  # Check in keys, not values
+                book_found = potential_book
+                ref_start_idx = i
+                break
+        
+        if book_found:
+            book = book_found
+            remaining_args = args[ref_start_idx:]
+            reference = ' '.join(remaining_args)
+        else:
+            # Fallback: treat first arg as book
+            book = args[0]
+            remaining_args = args[1:]
+            reference = ' '.join(remaining_args)
+        
+        # Handle both dot and colon formats
+        if ':' in reference:
+            # Format: "1 Kings 3:1-5"
+            try:
+                chapter_part, verse_part = reference.split(':')
+                chapter = int(chapter_part)
+                if '-' in verse_part:
+                    # Range: 3:1-5
+                    start_verse, end_verse = verse_part.split('-')
+                    verse = int(start_verse)
+                    end_verse = int(end_verse)
+                    return book, chapter, verse, end_verse
+                else:
+                    # Single verse: 3:1
+                    verse = int(verse_part)
+                    return book, chapter, verse, verse
+            except ValueError:
+                return None, None, None, None
+        elif '.' in reference:
+            # Format: "1 Kings 3.1-5" - convert dot to colon
+            reference = reference.replace('.', ':')
+            try:
+                chapter_part, verse_part = reference.split(':')
+                chapter = int(chapter_part)
+                if '-' in verse_part:
+                    # Range: 3:1-5
+                    start_verse, end_verse = verse_part.split('-')
+                    verse = int(start_verse)
+                    end_verse = int(end_verse)
+                    return book, chapter, verse, end_verse
+                else:
+                    # Single verse: 3:1
+                    verse = int(verse_part)
+                    return book, chapter, verse, verse
+            except ValueError:
+                return None, None, None, None
+        else:
+            # Book and chapter only (e.g., "1 Kings 3")
+            try:
+                chapter = int(remaining_args[-1])  # Last argument should be chapter
+                return book, chapter, None, None
+            except ValueError:
+                return None, None, None, None
+    
+    # Handle both dot and colon formats
+        if ':' in reference:
+            # Format: "1 Kings 3:1-5"
+            try:
+                chapter_part, verse_part = reference.split(':')
+                chapter = int(chapter_part)
+                if '-' in verse_part:
+                    # Range: 3:1-5
+                    start_verse, end_verse = verse_part.split('-')
+                    verse = int(start_verse)
+                    end_verse = int(end_verse)
+                    return book, chapter, verse, end_verse
+                else:
+                    # Single verse: 3:1
+                    verse = int(verse_part)
+                    return book, chapter, verse, verse
+            except ValueError:
+                return None, None, None, None
+        elif '.' in reference:
+            # Format: "1 Kings 3.1-5" - convert dot to colon
+            reference = reference.replace('.', ':')
+            try:
+                chapter_part, verse_part = reference.split(':')
+                chapter = int(chapter_part)
+                if '-' in verse_part:
+                    # Range: 3:1-5
+                    start_verse, end_verse = verse_part.split('-')
+                    verse = int(start_verse)
+                    end_verse = int(end_verse)
+                    return book, chapter, verse, end_verse
+                else:
+                    # Single verse: 3:1
+                    verse = int(verse_part)
+                    return book, chapter, verse, verse
+            except ValueError:
+                return None, None, None, None
+        else:
+            # Book and chapter only (e.g., "1 Kings 3")
+            try:
+                chapter = int(remaining_args[-1])  # Last argument should be chapter
+                return book, chapter, None, None
             except ValueError:
                 return None, None, None, None
     
