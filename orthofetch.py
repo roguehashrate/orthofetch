@@ -969,6 +969,19 @@ def handle_bible_command(args):
         list_bible_books()
         return
     
+    # Check for cross-chapter range format like "Job 2:13-4:3"
+    if len(args) >= 2 and '-' in args[1] and ':' in args[1]:
+        dash_pos = args[1].find('-')
+        if dash_pos > 0 and ':' in args[1][dash_pos+1:]:
+            # This looks like cross-chapter range
+            full_reference = ' '.join(args)
+            parsed = parse_reading_reference(full_reference)
+            if parsed:
+                book, start_chapter, start_verse, end_chapter, end_verse = parsed
+                text = get_bible_text(book, start_chapter, start_verse, end_chapter, end_verse)
+                print(text)
+                return
+    
     book, chapter, start_verse, end_verse = parse_bible_reference(args)
     
     if book and chapter is None:
@@ -982,14 +995,14 @@ def handle_bible_command(args):
             if book_code:
                 last_verse = get_last_verse_in_chapter(book_code, chapter)
                 if last_verse > 0:
-                    text = get_bible_text(book, chapter, 1, last_verse)
+                    text = get_bible_text(book, chapter, 1, chapter, last_verse)
                 else:
-                    text = get_bible_text(book, chapter, 1, 1)  # fallback
+                    text = get_bible_text(book, chapter, 1, chapter, 1)  # fallback
             else:
                 text = colorize_text(f"Book '{book}' not found.", Colors.DEEP_RED)
         else:
             # Show specific verses
-            text = get_bible_text(book, chapter, start_verse, end_verse)
+            text = get_bible_text(book, chapter, start_verse, chapter, end_verse)
         print(text)
     else:
         print(colorize_text("Invalid Bible reference format.", Colors.DEEP_RED))
