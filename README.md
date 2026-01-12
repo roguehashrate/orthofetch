@@ -114,4 +114,4 @@ Calendar comes from [orthocal](https://orthocal.info/).
 
 ## License
 
-Rogue Pact License v2
+BSD 2-Clause
