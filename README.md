@@ -109,7 +109,7 @@ Books come from the JSON files from [l1lsm0k13's AncientBible project](https://l
 
 Calendar comes from [orthocal](https://orthocal.info/).
 
-
+:)
 ---
 
 ## License

@@ -87,7 +87,8 @@ def parse_reading_reference(reference):
         Always returns 5 elements for consistency
     """
     # Handle special case for Wisdom of Solomon
-    reference = reference.replace("Wisdom", "Wisdom of Solomon")
+    if reference.startswith('Wisdom ') and not reference.startswith('Wisdom of '):
+        reference = 'Wisdom of Solomon' + reference[6:]
     
     # Handle special format like "3[1] Kings 2.6-14" - extract the second number in brackets
     reference = re.sub(r'(\d+)\[(\d+)\]\s+Kings', r'\2 Kings', reference)
