@@ -355,7 +355,10 @@ def display_reading(reading_number):
             for part in parts:
                 if ':' in part or '.' in part:
                     # Check if this looks like a full reference (has book name) or just chapter.verses
-                    if part[0].isdigit():
+                    # A full book reference like "1 Peter 1.1-2" will have space(s) after the book name
+                    # A simple chapter.verse reference like "3.4-7" or "3:4-7" will not have spaces before the first . or :
+                    has_book_name = re.search(r'\d+[A-Za-z\s]+\d+[.:]', part) is not None
+                    if part[0].isdigit() and ('.' in part or ':' in part) and not has_book_name:
                         # This looks like "3.4-7" (chapter.verses without book)
                         if parsed_references:
                             # Use book from first reference
@@ -1135,3 +1138,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
