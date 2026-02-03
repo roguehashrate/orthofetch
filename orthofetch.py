@@ -81,7 +81,7 @@ CROSS_WIDTH = max(len(line) for line in ORTHODOX_CROSS)
 
 
 def parse_reading_reference(reference):
-    """Parse a reading reference like 'Genesis 3:1-8', 'John 10:9', 'Exodus 15.22-16.1', or '3[1] Kings 2.6-14'
+    """Parse a reading reference like 'Genesis 3:1-8', 'John 10:9', 'Exodus 15.22-16.1', '3[1] Kings 2.6-14', 'Numbers 8', 'Exodus 12, 13'
     
     Returns:
         None if parsing fails
@@ -123,6 +123,29 @@ def parse_reading_reference(reference):
         
         # Return in 5-tuple format for consistency (start_chapter = end_chapter)
         return book, chapter, start_verse, chapter, end_verse
+    
+    # Pattern to match: Book Chapter (no verses)
+    chapter_only_pattern = r"([0-9A-Za-z\s]+)\s+(\d+)$"
+    chapter_match = re.match(chapter_only_pattern, reference.strip())
+    
+    if chapter_match:
+        book = chapter_match.group(1).strip()
+        chapter = int(chapter_match.group(2))
+        
+        # Return chapter-only reference - verse range will be determined later
+        return book, chapter, None, chapter, None
+    
+    # Pattern to match: Book Chapter, Chapter (comma-separated chapters)
+    comma_chapter_pattern = r"([0-9A-Za-z\s]+)\s+(\d+),\s*(\d+)$"
+    comma_chapter_match = re.match(comma_chapter_pattern, reference.strip())
+    
+    if comma_chapter_match:
+        book = comma_chapter_match.group(1).strip()
+        start_chapter = int(comma_chapter_match.group(2))
+        end_chapter = int(comma_chapter_match.group(3))
+        
+        # Return cross-chapter reference with no verses
+        return book, start_chapter, None, end_chapter, None
     
     return None
 
@@ -166,7 +189,7 @@ def get_last_verse_in_chapter(book_code, chapter):
 
 
 def get_bible_text(book, start_chapter, start_verse, end_chapter=None, end_verse=None):
-    """Retrieve bible text for the specified reference. Supports cross-chapter ranges."""
+    """Retrieve bible text for the specified reference. Supports cross-chapter ranges and chapter-only references."""
     import json
     
     # Handle backward compatibility: if end_chapter is None, assume single chapter range
@@ -174,6 +197,17 @@ def get_bible_text(book, start_chapter, start_verse, end_chapter=None, end_verse
         end_chapter = start_chapter
         if end_verse is None:
             end_verse = start_verse
+    
+    # Handle chapter-only references - get entire chapter(s)
+    if start_verse is None:
+        start_verse = 1
+    if end_verse is None:
+        # Get last verse of the end chapter
+        book_code = BOOK_CODES.get(book)
+        if book_code:
+            end_verse = get_last_verse_in_chapter(book_code, end_chapter)
+        else:
+            end_verse = 1
     
     book_code = BOOK_CODES.get(book)
     if not book_code:
@@ -248,11 +282,23 @@ def get_bible_text(book, start_chapter, start_verse, end_chapter=None, end_verse
         if result_lines:
             # Create appropriate header
             if end_chapter > start_chapter:
-                header = f"{book} {start_chapter}:{start_verse}-{end_chapter}:{end_verse}"
+                # Cross-chapter range
+                if start_verse == 1 and end_verse == get_last_verse_in_chapter(BOOK_CODES.get(book), end_chapter):
+                    # Full chapters
+                    header = f"{book} {start_chapter}-{end_chapter}"
+                else:
+                    # Partial chapters
+                    header = f"{book} {start_chapter}:{start_verse}-{end_chapter}:{end_verse}"
             else:
-                header = f"{book} {start_chapter}:{start_verse}"
-                if end_verse != start_verse:
-                    header += f"-{end_verse}"
+                # Single chapter
+                if start_verse == 1 and end_verse == get_last_verse_in_chapter(BOOK_CODES.get(book), start_chapter):
+                    # Full chapter
+                    header = f"{book} {start_chapter}"
+                else:
+                    # Partial chapter
+                    header = f"{book} {start_chapter}:{start_verse}"
+                    if end_verse != start_verse:
+                        header += f"-{end_verse}"
             
             # Colorize the header
             colored_header = colorize_text(header, Colors.GOLD)
@@ -349,7 +395,16 @@ def display_reading(reading_number):
         
         # Handle multiple verse ranges separated by commas
         if ',' in reading_ref:
-            # Parse all parts to get individual references
+            # Try to parse as single reference first (for cases like "Exodus 12, 13")
+            single_parsed = parse_reading_reference(reading_ref)
+            if single_parsed and single_parsed[2] is None and single_parsed[4] is None:
+                # This is a comma-separated chapter reference (like "Exodus 12, 13")
+                book, start_chapter, start_verse, end_chapter, end_verse = single_parsed
+                text = get_bible_text(book, start_chapter, start_verse, end_chapter, end_verse)
+                print(text)
+                return
+            
+            # If single parsing failed, try multi-part parsing
             parts = [p.strip() for p in reading_ref.split(',')]
             parsed_references = []
             book = None
